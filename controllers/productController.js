@@ -1,87 +1,154 @@
 const db = require('../config/db');
 
-exports.getAllProducts = (req, res) => {
-  const getAllProductsQuery = 'SELECT * FROM products';
+// GET ALL PRODUCTS (with pagination, search, filter)
+exports.getAllProducts = async (req, res, next) => {
+  try {
+    // URL se page, limit, search, category lo
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const search = req.query.search || '';
+    const category = req.query.category || '';
 
-  db.query(getAllProductsQuery, (err, result) => {
-    if (err) {
-      return res.json({ success: false, message: err.message });
+    // Base query
+    let query = 'SELECT * FROM products WHERE 1=1';
+    let countQuery = 'SELECT COUNT(*) as total FROM products WHERE 1=1';
+    let params = [];
+    let countParams = [];
+
+    // Search filter
+    if (search) {
+      query += ' AND name LIKE ?';
+      countQuery += ' AND name LIKE ?';
+      params.push(`%${search}%`);
+      countParams.push(`%${search}%`);
     }
-    return res.json({ success: true, data: result });
-  });
+
+    // Category filter
+    if (category) {
+      query += ' AND category_id = ?';
+      countQuery += ' AND category_id = ?';
+      params.push(category);
+      countParams.push(category);
+    }
+
+    // Total count
+    const [countResult] = await db.query(countQuery, countParams);
+    const total = countResult[0].total;
+
+    // Pagination
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(limit, offset);
+
+    const [result] = await db.query(query, params);
+
+    res.json({
+      success: true,
+      data: result,
+      pagination: {
+        currentPage: page,
+        totalPages: Math.ceil(total / limit),
+        totalProducts: total,
+        limit: limit
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
 };
 
-exports.getProductById = (req, res) => {
-  const { id } = req.params;
-  const getProductByIdQuery = 'SELECT * FROM products WHERE id = ?';
+// GET PRODUCT BY ID
+exports.getProductById = async (req, res, next) => {
+  try {
+    const { id } = req.params;
 
-  db.query(getProductByIdQuery, [id], (err, result) => {
-    if (err) {
-      return res.json({ success: false, message: err.message });
-    }
+    const [result] = await db.query(
+      'SELECT * FROM products WHERE id = ?',
+      [id]
+    );
+
     if (result.length === 0) {
-      return res.json({ success: false, message: "Product not found" });
+      const error = new Error('Product not found');
+      error.statusCode = 404;
+      return next(error);
     }
-    return res.json({ success: true, data: result[0] });
-  });
+
+    res.json({ success: true, data: result[0] });
+  } catch (error) {
+    next(error);
+  }
 };
 
-exports.addProduct = (req, res) => {
-  const { name, description, price, stock, category_id, image } = req.body;
+// ADD PRODUCT
+exports.addProduct = async (req, res, next) => {
+  try {
+    const { name, description, price, stock, category_id, image } = req.body;
 
-  // Validation
-  if (!name || !price || !stock || !category_id) {
-    return res.json({ success: false, message: "All required fields missing" });
-  }
-
-  const addProductQuery = 'INSERT INTO products (name, description, price, stock, category_id, image) VALUES (?, ?, ?, ?, ?, ?)';
-
-  db.query(addProductQuery, [name, description, price, stock, category_id, image], (err, result) => {
-    if (err) {
-      return res.json({ success: false, message: err.message });
+    if (!name || !price || !stock || !category_id) {
+      const error = new Error('All required fields missing');
+      error.statusCode = 400;
+      return next(error);
     }
-    return res.json({ success: true, message: "Product added successfully" });
-  });
+
+    await db.query(
+      'INSERT INTO products (name, description, price, stock, category_id, image) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, description, price, stock, category_id, image]
+    );
+
+    res.json({ success: true, message: 'Product added successfully' });
+  } catch (error) {
+    next(error);
+  }
 };
 
-exports.updateProduct = (req, res) => {
-  const { id } = req.params;
-  const { name, description, price, stock, category_id, image } = req.body;
+// UPDATE PRODUCT
+exports.updateProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { name, description, price, stock, category_id, image } = req.body;
 
-  // Validation
-  if (!name || !price || !stock || !category_id) {
-    return res.json({ success: false, message: "All required fields missing" });
-  }
-
-  const updateProductQuery = 'UPDATE products SET name = ?, description = ?, price = ?, stock = ?, category_id = ?, image = ? WHERE id = ?';
-
-  db.query(updateProductQuery, [name, description, price, stock, category_id, image, id], (err, result) => {
-    if (err) {
-      return res.json({ success: false, message: err.message });
+    if (!name || !price || !stock || !category_id) {
+      const error = new Error('All required fields missing');
+      error.statusCode = 400;
+      return next(error);
     }
+
+    const [result] = await db.query(
+      'UPDATE products SET name = ?, description = ?, price = ?, stock = ?, category_id = ?, image = ? WHERE id = ?',
+      [name, description, price, stock, category_id, image, id]
+    );
 
     if (result.affectedRows === 0) {
-      return res.json({ success: false, message: "Product not found" });
+      const error = new Error('Product not found');
+      error.statusCode = 404;
+      return next(error);
     }
 
-    return res.json({ success: true, message: "Product updated successfully" });
-  });
+    res.json({ success: true, message: 'Product updated successfully' });
+  } catch (error) {
+    next(error);
+  }
 };
 
-exports.deleteProduct = (req, res) => {
-  const { id } = req.params;
+// DELETE PRODUCT
+exports.deleteProduct = async (req, res, next) => {
+  try {
+    const { id } = req.params;
 
-  const deleteProductQuery = 'DELETE FROM products WHERE id = ?';
-
-  db.query(deleteProductQuery, [id], (err, result) => {
-    if (err) {
-      return res.json({ success: false, message: err.message });
-    }
+    const [result] = await db.query(
+      'DELETE FROM products WHERE id = ?',
+      [id]
+    );
 
     if (result.affectedRows === 0) {
-      return res.json({ success: false, message: "Product not found" });
+      const error = new Error('Product not found');
+      error.statusCode = 404;
+      return next(error);
     }
 
-    return res.json({ success: true, message: "Product deleted successfully" });
-  });
+    res.json({ success: true, message: 'Product deleted successfully' });
+  } catch (error) {
+    next(error);
+  }
 };

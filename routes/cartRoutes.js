@@ -9,3 +9,4 @@ router.delete('/cart/:user_id/:product_id', cartController.removeFromCart);
 router.delete('/cart/:user_id', cartController.clearCart);  // ← Add this
 
 module.exports = router;
+

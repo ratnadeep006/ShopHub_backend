@@ -1,18 +1,71 @@
 const express = require('express');
 const router = express.Router();
-
 const userController = require('../controllers/userController');
+const { verifyToken } = require('../middleware/authMiddleware');
+const { 
+  validateRegister,
+  validateLogin,
+  handleValidationErrors  
+} = require('../middleware/validation');
+const { 
+  loginLimiter,
+  registerLimiter,
+  passwordResetLimiter
+} = require('../middleware/rateLimiter');
 
-// register route
-router.post('/register', userController.register);
+// ============ AUTH ROUTES ============
 
-// login route
-router.post('/login', userController.login);  
+// REGISTER
+router.post(
+  '/register',
+  registerLimiter,
+  validateRegister,
+  handleValidationErrors,
+  userController.register
+);
 
-// fetch user list
-router.get('/list', userController.user_list);
+// LOGIN
+router.post(
+  '/login',
+  loginLimiter,
+  validateLogin,
+  handleValidationErrors,
+  userController.login
+);
 
-// get user from by the id . 
-router.get('/user/:id', userController.get_user_by_id);
+// FORGOT PASSWORD
+router.post(
+  '/forgot-password',
+  passwordResetLimiter,
+  userController.forgotPassword
+);
 
-module.exports = router;
+// RESET PASSWORD
+router.post(
+  '/reset-password',
+  userController.resetPassword
+);
+
+// ============ USER ROUTES ============
+
+// GET all users list
+router.get(
+  '/list',
+  userController.user_list
+);
+
+// GET user by ID (protected)
+router.get(
+  '/user/:id',
+  verifyToken,
+  userController.get_user_by_id
+);
+
+// UPDATE profile (protected)
+router.put(
+  '/user/:id',
+  verifyToken,
+  userController.updateProfile
+);
+
+module.exports = router;  
